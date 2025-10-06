@@ -96,9 +96,25 @@ public class DefaultToolingModelBuilderRegistry implements ToolingModelBuilderRe
     @Override
     public Builder locateForClientOperation(String modelName, boolean parameter, ProjectState target) throws UnknownModelException {
         return new BuildOperationWrappingBuilder(
-            new LockSingleProjectBuilder(
-                locateForClientOperation(modelName, target.getMutableModel(), parameter), target),
-            modelName, target.getOwner(), target, target.getDisplayName(), buildOperationRunner);
+            new LockSingleProjectBuilder(locateForClientOperation(modelName, target.getMutableModel(), parameter), target),
+            modelName,
+            target.getOwner(),
+            target,
+            target.getDisplayName(),
+            buildOperationRunner
+        );
+    }
+
+    @Override
+    public Builder locateForClientOperation(String modelName, boolean parameter, ProjectState target, ProjectInternal project) throws UnknownModelException {
+        return new BuildOperationWrappingBuilder(
+            new XxxBuilder(locateForClientOperation(modelName, project, parameter), target),
+            modelName,
+            target.getOwner(),
+            target,
+            target.getDisplayName(),
+            buildOperationRunner
+        );
     }
 
     @Nullable
@@ -306,6 +322,20 @@ public class DefaultToolingModelBuilderRegistry implements ToolingModelBuilderRe
         @Override
         public Object build(Object parameter) {
             return target.fromMutableState(p -> delegate.build(parameter));
+        }
+    }
+
+    private static class XxxBuilder extends DelegatingBuilder { // TODO: rename
+        private final ProjectState target;
+
+        public XxxBuilder(Builder delegate, ProjectState target) {
+            super(delegate);
+            this.target = target;
+        }
+
+        @Override
+        public Object build(Object parameter) {
+            return target.runSync(() -> delegate.build(parameter));
         }
     }
 

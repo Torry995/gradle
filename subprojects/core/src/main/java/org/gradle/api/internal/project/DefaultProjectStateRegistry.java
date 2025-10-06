@@ -54,6 +54,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 public class DefaultProjectStateRegistry implements ProjectStateRegistry, Closeable {
     private final WorkerLeaseService workerLeaseService;
@@ -402,6 +403,11 @@ public class DefaultProjectStateRegistry implements ProjectStateRegistry, Closea
         }
 
         @Override
+        public ProjectInternal getMutableModelEvenWhenFailed() {
+            return controller.getMutableModelEvenWhenFailed();
+        }
+
+        @Override
         public void ensureConfigured() {
             // Need to configure intermediate parent projects for configure-on-demand
             ProjectState parent = getBuildParent();
@@ -467,6 +473,28 @@ public class DefaultProjectStateRegistry implements ProjectStateRegistry, Closea
                 }
             } else {
                 return workerLeaseService.withReplacedLocks(currentLocks, projectLock, () -> function.apply(getMutableModel()));
+            }
+        }
+
+        @Override
+        public <S> S runSync(Supplier<S> action) {
+            Thread currentThread = Thread.currentThread();
+            if (workerLeaseService.isAllowedUncontrolledAccessToAnyProject() || canDoAnythingToThisProject.contains(currentThread)) {
+                // Current thread is allowed to access anything at any time, so run the action
+                return action.get();
+            }
+
+            Collection<? extends ResourceLock> currentLocks = workerLeaseService.getCurrentProjectLocks();
+            if (currentLocks.contains(projectLock) || currentLocks.contains(allProjectsLock)) {
+                // if we already hold the project lock for this project
+                if (currentLocks.size() == 1) {
+                    // the lock for this project is the only lock we hold, can run the action
+                    return action.get();
+                } else {
+                    throw new IllegalStateException("Current thread holds more than one project lock. It should hold only one project lock at any given time.");
+                }
+            } else {
+                return workerLeaseService.withReplacedLocks(currentLocks, projectLock, action::get);
             }
         }
 
